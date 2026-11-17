@@ -1,0 +1,236 @@
+{
+  "entities": {
+    "UserPublicProfile": {
+      "title": "UserPublicProfile",
+      "description": "Public-safe campus account summary for a verified Student or Driver (isolated from PII).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the account owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name shown on campus rides.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "description": "Campus portal role (never ADMIN on self-registration).",
+          "enum": ["STUDENT", "DRIVER"]
+        },
+        "rating": {
+          "type": "number",
+          "description": "Account rating between 1.0 and 5.0."
+        },
+        "available": {
+          "type": "boolean",
+          "description": "Whether a driver is available for dispatch."
+        },
+        "tricyclePlate": {
+          "type": "string",
+          "description": "Assigned campus tricycle plate number.",
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp."
+        }
+      },
+      "required": ["uid", "displayName", "role", "rating", "available", "createdAt", "updatedAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated PII and wallet metadata owned strictly by the user or an administrator.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified account email address.",
+          "minLength": 3,
+          "maxLength": 180
+        },
+        "phone": {
+          "type": "string",
+          "description": "Contact phone number.",
+          "maxLength": 32
+        },
+        "matricNo": {
+          "type": "string",
+          "description": "Student matriculation number.",
+          "maxLength": 48
+        },
+        "department": {
+          "type": "string",
+          "description": "Student academic department.",
+          "maxLength": 120
+        },
+        "licenseNo": {
+          "type": "string",
+          "description": "Driver permit/license identifier.",
+          "maxLength": 48
+        },
+        "walletBalance": {
+          "type": "number",
+          "description": "Current campus wallet balance in NGN."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp."
+        }
+      },
+      "required": ["uid", "email", "walletBalance", "updatedAt"]
+    },
+    "AdminRoleMarker": {
+      "title": "AdminRoleMarker",
+      "description": "Server-managed administrator role record (immutable from client SDKs).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Administrator UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "role": {
+          "type": "string",
+          "description": "Administrator role marker.",
+          "enum": ["ADMIN"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        }
+      },
+      "required": ["uid", "role", "createdAt"]
+    },
+    "RideBooking": {
+      "title": "RideBooking",
+      "description": "Campus tricycle ride booking linking a student rider and assigned driver.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Ride document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "bookingRef": {
+          "type": "string",
+          "description": "Human-readable booking reference.",
+          "minLength": 3,
+          "maxLength": 32
+        },
+        "studentId": {
+          "type": "string",
+          "description": "UID of the student who booked the ride.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "driverId": {
+          "type": "string",
+          "description": "UID of the assigned driver or empty string when pending.",
+          "maxLength": 128
+        },
+        "fromStopId": {
+          "type": "string",
+          "description": "Origin campus stop identifier.",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "toStopId": {
+          "type": "string",
+          "description": "Destination campus stop identifier.",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "rideType": {
+          "type": "string",
+          "description": "Tricycle ride tier.",
+          "enum": ["normal", "shared", "express"]
+        },
+        "paymentMethod": {
+          "type": "string",
+          "description": "Payment mode for the ride.",
+          "enum": ["wallet", "cash"]
+        },
+        "fare": {
+          "type": "number",
+          "description": "Calculated fare in NGN."
+        },
+        "status": {
+          "type": "string",
+          "description": "Ride lifecycle status.",
+          "enum": ["Pending", "Accepted", "In Progress", "Completed", "Cancelled", "Declined"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-updated timestamp."
+        }
+      },
+      "required": [
+        "id",
+        "bookingRef",
+        "studentId",
+        "driverId",
+        "fromStopId",
+        "toStopId",
+        "rideType",
+        "paymentMethod",
+        "fare",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserPublicProfile" },
+      "description": "Verified Student and Driver public-safe profile metadata."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Owner-restricted PII and wallet record (docId = info)."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminRoleMarker" },
+      "description": "Read-only admin role marker documents."
+    },
+    "/rides/{rideId}": {
+      "schema": { "$ref": "#/entities/RideBooking" },
+      "description": "Campus tricycle ride bookings between students and drivers."
+    }
+  }
+}

@@ -1,0 +1,44 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: var(--font-plus-jakarta), system-ui, -apple-system, sans-serif;
+    background-color: #f4f7fa;
+    color: #0f172a;
+    -webkit-font-smoothing: antialiased;
+    transition: background-color 200ms ease, color 200ms ease;
+  }
+
+  html.dark body {
+    background-color: #0e1621;
+    color: #f1f5f9;
+  }
+}
+
+/* Telegram-inspired clean flat glass & crisp surface elevation — zero gradients */
+.glass-surface {
+  background-color: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+
+html.dark .glass-surface {
+  background-color: rgba(23, 33, 43, 0.94);
+  border: 1px solid rgba(43, 56, 72, 0.95);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+}
+
+.glass-nav {
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}

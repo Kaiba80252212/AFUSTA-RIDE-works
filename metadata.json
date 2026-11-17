@@ -1,0 +1,8 @@
+{
+  "name": "AFUSTA Ride — Campus Tricycle Booking System",
+  "description": "Online campus tricycle booking, real-time ride tracking, cashless wallet, and fleet management system for AFUSTA.\n",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
