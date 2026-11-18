@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { signJwt, USER_SESSION_COOKIE } from '@/lib/auth-security';
 import { verifyFirebaseIdToken } from '@/lib/firebase-token';
+import { phonesMatch } from '@/lib/phone';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { getCookieSecurityOptions, verifyCsrfOrigin } from '@/lib/server-auth';
-import { mutateDatabase, sanitizeUser, UserRecord } from '@/lib/server-store';
+import { AuthProvider, mutateDatabase, sanitizeUser, UserRecord } from '@/lib/server-store';
 
 export async function POST(req: NextRequest) {
   const csrfError = verifyCsrfOrigin(req);
   if (csrfError) return csrfError;
 
   const ip = getClientIp(req.headers);
-  const limit = checkRateLimit(`firebase-auth:${ip}`, 25, 15 * 60 * 1000);
+  const limit = checkRateLimit(`firebase-auth:${ip}`, 250, 15 * 60 * 1000);
   if (!limit.allowed) {
     return NextResponse.json(
       { error: 'Too many authentication attempts. Please wait before trying again.' },
@@ -50,11 +51,16 @@ export async function POST(req: NextRequest) {
         : '/student';
 
     const verified = await verifyFirebaseIdToken(idToken);
+    const bodyName = typeof body?.name === 'string' ? body.name.trim().slice(0, 120) : '';
+    const bodyPhone = typeof body?.phone === 'string' ? body.phone.trim().slice(0, 32) : '';
 
     const outcome = await mutateDatabase((db) => {
       const now = new Date().toISOString();
       const existing = db.users.find(
-        (u) => u.email.toLowerCase() === verified.email.toLowerCase()
+        (u) =>
+          (u.firebaseUid && u.firebaseUid === verified.uid) ||
+          (verified.email && u.email && u.email.toLowerCase() === verified.email.toLowerCase()) ||
+          (verified.phoneNumber && phonesMatch(u.phone, verified.phoneNumber))
       );
 
       if (existing) {
@@ -76,7 +82,7 @@ export async function POST(req: NextRequest) {
           return {
             ok: false as const,
             status: 403,
-            error: 'This email is already linked to a different Firebase identity.',
+            error: 'This account is already linked to a different Firebase identity.',
           };
         }
 
@@ -84,13 +90,18 @@ export async function POST(req: NextRequest) {
         existing.lastLoginAt = now;
         existing.online = true;
         existing.firebaseUid = verified.uid;
+        if (verified.phoneNumber && (!existing.phone || existing.phone === '+234 800 000 0000')) {
+          existing.phone = verified.phoneNumber;
+        }
         if (verified.picture) {
           existing.googleAvatarUrl = verified.picture;
           if (!existing.customAvatarUrl) {
             existing.avatarUrl = verified.picture;
           }
         }
-        if (!existing.name && verified.name) existing.name = verified.name;
+        if ((!existing.name || existing.name === existing.phone) && (bodyName || verified.name)) {
+          existing.name = bodyName || verified.name;
+        }
 
         const targetUrl =
           existing.role === 'DRIVER'
@@ -109,12 +120,19 @@ export async function POST(req: NextRequest) {
         };
       }
 
-      // First-time Firebase sign-in (Google or Email/Password) creates STUDENT or DRIVER only (never ADMIN)
-      const providerType = verified.signInProvider === 'password' ? 'email' : 'google';
+      // First-time Firebase sign-in (Google, Phone SMS, or verified Email/Password) creates STUDENT or DRIVER only (never ADMIN)
+      const providerType: AuthProvider =
+        verified.signInProvider === 'phone'
+          ? 'phone'
+          : verified.signInProvider === 'password'
+          ? 'email'
+          : 'google';
+      const resolvedPhone = verified.phoneNumber || bodyPhone || '+234 800 000 0000';
+      const resolvedName = bodyName || verified.name || resolvedPhone || 'AFUSTA User';
       const newUser: UserRecord = {
         id: `usr-${requestedRole === 'DRIVER' ? 'drv' : 'stu'}-${Date.now()}`,
-        name: verified.name,
-        email: verified.email,
+        name: resolvedName,
+        email: verified.email || '',
         passwordHash: '',
         authProvider: providerType,
         emailVerified: true,
@@ -122,7 +140,7 @@ export async function POST(req: NextRequest) {
         googleAvatarUrl: verified.picture,
         firebaseUid: verified.uid,
         role: requestedRole,
-        phone: typeof body?.phone === 'string' && body.phone.trim() ? body.phone.trim() : '+234 800 000 0000',
+        phone: resolvedPhone,
         status: 'Active',
         online: true,
         rating: 5.0,

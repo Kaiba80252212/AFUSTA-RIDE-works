@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { signInWithPopup, signOut } from 'firebase/auth';
+import { signInWithPopup, signOut, User } from 'firebase/auth';
 import { ChevronDown, ChevronUp, Loader2, Mail, Trash2, Users } from 'lucide-react';
 import {
   auth,
   createGoogleAuthProvider,
+  getRedirectResult,
+  signInWithRedirect,
   syncFirebaseProfileToFirestore,
 } from '@/lib/firebase';
 
@@ -16,6 +18,7 @@ interface GoogleAccountHint {
 }
 
 const STORAGE_KEY = 'afusta_google_account_hints';
+const REDIRECT_CTX_KEY = 'afusta_google_redirect_ctx';
 const EMPTY_HINTS: GoogleAccountHint[] = [];
 const listeners = new Set<() => void>();
 let cachedRaw: string | null = null;
@@ -147,12 +150,122 @@ export function GoogleSignInButton({
   const onErrorRef = useRef(onError);
   const onSuccessRef = useRef(onSuccess);
   const nextPathRef = useRef(nextPath);
+  const roleRef = useRef(role);
+  const scopeRef = useRef(scope);
 
   useEffect(() => {
     onErrorRef.current = onError;
     onSuccessRef.current = onSuccess;
     nextPathRef.current = nextPath;
-  }, [onError, onSuccess, nextPath]);
+    roleRef.current = role;
+    scopeRef.current = scope;
+  }, [onError, onSuccess, nextPath, role, scope]);
+
+  async function finalizeGoogleUser(
+    user: User,
+    ctx: { scope: 'user'; role: 'STUDENT' | 'DRIVER'; nextPath?: string }
+  ) {
+    const idToken = await user.getIdToken();
+
+    const res = await fetch('/api/auth/firebase', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scope: ctx.scope,
+        role: ctx.role,
+        nextPath: ctx.nextPath,
+        idToken,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.user) {
+      await signOut(auth).catch(() => undefined);
+      throw new Error(data.error || 'Unable to establish your Google session.');
+    }
+
+    const resolvedRole: 'STUDENT' | 'DRIVER' =
+      data.user.role === 'DRIVER' ? 'DRIVER' : 'STUDENT';
+
+    try {
+      await syncFirebaseProfileToFirestore({
+        uid: user.uid,
+        displayName: data.user.name || user.displayName || 'AFUSTA User',
+        email: data.user.email || user.email || '',
+        role: resolvedRole,
+        phone: data.user.phone,
+        matricNo: data.user.matricNo,
+        department: data.user.department,
+        licenseNo: data.user.licenseNo,
+        plateNumber: data.user.plateNumber,
+        available: Boolean(data.user.available),
+        walletBalance: typeof data.user.walletBalance === 'number' ? data.user.walletBalance : 0,
+      });
+    } catch {
+      // Structured Firestore error is already logged by handleFirestoreError; proceed to dashboard with verified session
+    }
+
+    if (data.user.email && data.user.name) {
+      saveAccountHint({
+        email: data.user.email,
+        name: data.user.name,
+        avatarUrl: data.user.avatarUrl,
+      });
+    }
+
+    const target =
+      typeof data.nextUrl === 'string'
+        ? data.nextUrl
+        : ctx.nextPath || (resolvedRole === 'DRIVER' ? '/driver' : '/student');
+
+    if (onSuccessRef.current) {
+      setLoading(false);
+      onSuccessRef.current(target);
+    } else {
+      window.location.assign(target);
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (!active || !result?.user) return;
+        let ctx: { scope: 'user'; role: 'STUDENT' | 'DRIVER'; nextPath?: string } = {
+          scope: scopeRef.current,
+          role: roleRef.current,
+          nextPath: nextPathRef.current,
+        };
+        try {
+          const rawCtx = window.sessionStorage.getItem(REDIRECT_CTX_KEY);
+          if (rawCtx) {
+            const parsed = JSON.parse(rawCtx);
+            ctx = {
+              scope: 'user',
+              role: parsed.role === 'DRIVER' ? 'DRIVER' : 'STUDENT',
+              nextPath: typeof parsed.nextPath === 'string' ? parsed.nextPath : nextPathRef.current,
+            };
+          }
+          window.sessionStorage.removeItem(REDIRECT_CTX_KEY);
+        } catch {
+          // Ignore sessionStorage read errors
+        }
+        setLoading(true);
+        await finalizeGoogleUser(result.user, ctx);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setLoading(false);
+        const friendly = mapFirebaseAuthError(err);
+        if (friendly) {
+          onErrorRef.current?.(friendly);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function launchFirebaseGoogleAuth(options?: {
     loginHint?: string;
@@ -165,74 +278,41 @@ export function GoogleSignInButton({
     }
 
     setLoading(true);
+    const provider = createGoogleAuthProvider({
+      loginHint: trimmedHint || undefined,
+      prompt: options?.promptMode || 'select_account',
+    });
+
     try {
-      const provider = createGoogleAuthProvider({
-        loginHint: trimmedHint || undefined,
-        prompt: options?.promptMode || 'select_account',
-      });
-
       const credential = await signInWithPopup(auth, provider);
-      const idToken = await credential.user.getIdToken();
-
-      const res = await fetch('/api/auth/firebase', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          scope,
-          role,
-          nextPath: nextPathRef.current,
-          idToken,
-        }),
+      await finalizeGoogleUser(credential.user, {
+        scope,
+        role,
+        nextPath: nextPathRef.current,
       });
-
-      const data = await res.json();
-      if (!res.ok || !data.user) {
-        await signOut(auth).catch(() => undefined);
-        throw new Error(data.error || 'Unable to establish your Google session.');
-      }
-
-      const resolvedRole: 'STUDENT' | 'DRIVER' =
-        data.user.role === 'DRIVER' ? 'DRIVER' : 'STUDENT';
-
-      try {
-        await syncFirebaseProfileToFirestore({
-          uid: credential.user.uid,
-          displayName: data.user.name || credential.user.displayName || 'AFUSTA User',
-          email: data.user.email || credential.user.email || '',
-          role: resolvedRole,
-          phone: data.user.phone,
-          matricNo: data.user.matricNo,
-          department: data.user.department,
-          licenseNo: data.user.licenseNo,
-          plateNumber: data.user.plateNumber,
-          available: Boolean(data.user.available),
-          walletBalance: typeof data.user.walletBalance === 'number' ? data.user.walletBalance : 0,
-        });
-      } catch {
-        // Structured Firestore error is already logged by handleFirestoreError; proceed to dashboard with verified session
-      }
-
-      if (data.user.email && data.user.name) {
-        saveAccountHint({
-          email: data.user.email,
-          name: data.user.name,
-          avatarUrl: data.user.avatarUrl,
-        });
-      }
-
-      const target =
-        typeof data.nextUrl === 'string'
-          ? data.nextUrl
-          : nextPathRef.current || (resolvedRole === 'DRIVER' ? '/driver' : '/student');
-
-      if (onSuccessRef.current) {
-        setLoading(false);
-        onSuccessRef.current(target);
-      } else {
-        window.location.assign(target);
-      }
     } catch (err) {
+      const code =
+        err && typeof err === 'object' && 'code' in err
+          ? String((err as { code?: string }).code || '')
+          : '';
+      if (
+        code === 'auth/popup-blocked' ||
+        code === 'auth/operation-not-supported-in-this-environment'
+      ) {
+        try {
+          window.sessionStorage.setItem(
+            REDIRECT_CTX_KEY,
+            JSON.stringify({ scope, role, nextPath: nextPathRef.current })
+          );
+          await signInWithRedirect(auth, provider);
+          return;
+        } catch (redirectErr) {
+          setLoading(false);
+          const friendly = mapFirebaseAuthError(redirectErr);
+          if (friendly) onErrorRef.current?.(friendly);
+          return;
+        }
+      }
       setLoading(false);
       const friendly = mapFirebaseAuthError(err);
       if (friendly) {

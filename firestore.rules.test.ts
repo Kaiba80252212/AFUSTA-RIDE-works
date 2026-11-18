@@ -8,10 +8,11 @@ const blueprint = JSON.parse(
   fs.readFileSync(path.join(process.cwd(), 'firebase-blueprint.json'), 'utf8')
 );
 
-test('firestore.rules enforces global deny-all catch-all and strict email verification', () => {
+test('firestore.rules enforces global deny-all catch-all and strict email/phone verification', () => {
   assert.match(rulesContent, /rules_version\s*=\s*'2'/);
   assert.match(rulesContent, /match \/\{document=\*\*\}\s*\{\s*allow read, write: if false;/);
   assert.match(rulesContent, /request\.auth\.token\.email_verified == true/);
+  assert.match(rulesContent, /request\.auth\.token\.phone_number is string/);
   assert.doesNotMatch(rulesContent, /allow read\s*:\s*if true/);
   assert.doesNotMatch(rulesContent, /allow write\s*:\s*if true/);
 });

@@ -40,7 +40,7 @@ export function EmailVerificationScreen({
         </h2>
         <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
           We sent a verification link to{' '}
-          <span className="font-semibold text-slate-900 dark:text-slate-100 break-all">
+          <span className="font-semibold text-slate-900 dark:text-slate-100 break-words">
             {email}
           </span>
           . Open the link in your inbox (or spam folder) before logging in.

@@ -122,3 +122,32 @@ test('verifyFirebaseJwtWithCerts rejects unverified email, expired token, and wr
   assert.equal(allowedUnverified.email, 'spoof@afusta.edu.ng');
   assert.equal(allowedUnverified.emailVerified, false);
 });
+
+test('verifyFirebaseJwtWithCerts accepts valid Firebase Phone Auth token without email', () => {
+  const phoneToken = signTestRs256Jwt(
+    {
+      aud: PROJECT_ID,
+      iss: `https://securetoken.google.com/${PROJECT_ID}`,
+      sub: 'firebase-phone-uid-456',
+      iat: NOW - 15,
+      auth_time: NOW - 15,
+      exp: NOW + 3600,
+      phone_number: '+2348031234567',
+      firebase: { sign_in_provider: 'phone' },
+    },
+    privateKey
+  );
+
+  const verified = verifyFirebaseJwtWithCerts(
+    phoneToken,
+    { 'test-kid-1': publicKey },
+    PROJECT_ID,
+    NOW
+  );
+  assert.equal(verified.uid, 'firebase-phone-uid-456');
+  assert.equal(verified.phoneNumber, '+2348031234567');
+  assert.equal(verified.email, '');
+  assert.equal(verified.name, '+2348031234567');
+  assert.equal(verified.signInProvider, 'phone');
+});
+

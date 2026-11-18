@@ -443,7 +443,7 @@ export function AdminDashboardClient() {
                   >
                     <td className="py-3 pr-4">
                       <p className="font-semibold text-slate-900 dark:text-slate-100">{u.name}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">{u.email}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{u.email || u.phone}</p>
                     </td>
                     <td className="py-3 pr-4 font-mono text-xs text-slate-700 dark:text-slate-300">
                       {u.matricNo}

@@ -7,6 +7,7 @@ const FIREBASE_CERTS_URL =
 export interface VerifiedFirebaseUser {
   uid: string;
   email: string;
+  phoneNumber?: string;
   name: string;
   picture?: string;
   emailVerified: boolean;
@@ -94,6 +95,7 @@ export function verifyFirebaseJwtWithCerts(
     auth_time?: number;
     email?: string;
     email_verified?: boolean;
+    phone_number?: string;
     name?: string;
     picture?: string;
     firebase?: { sign_in_provider?: string };
@@ -145,24 +147,32 @@ export function verifyFirebaseJwtWithCerts(
   }
 
   const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
+  const phoneNumber =
+    typeof payload.phone_number === 'string' ? payload.phone_number.trim() : '';
+  const hasValidEmail = Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+  const hasValidPhone = Boolean(phoneNumber && /^\+?[0-9]{6,20}$/.test(phoneNumber));
   const isVerified = payload.email_verified === true;
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new Error('Firebase token does not contain a valid email address.');
+  const signInProvider = payload.firebase?.sign_in_provider;
+
+  if (!hasValidEmail && !hasValidPhone) {
+    throw new Error('Firebase token does not contain a valid email address or phone number.');
   }
-  if (!options?.allowUnverified && !isVerified) {
+
+  if (!options?.allowUnverified && !isVerified && !hasValidPhone) {
     throw new Error('Your account must have a verified email address before signing in.');
   }
 
   const rawName = typeof payload.name === 'string' ? payload.name.trim() : '';
-  const name = rawName || email.split('@')[0];
+  const name = rawName || (hasValidEmail ? email.split('@')[0] : phoneNumber);
 
   return {
     uid: payload.sub,
-    email,
+    email: hasValidEmail ? email : '',
+    ...(hasValidPhone ? { phoneNumber } : {}),
     name,
     picture: typeof payload.picture === 'string' ? payload.picture : undefined,
     emailVerified: isVerified,
-    signInProvider: payload.firebase?.sign_in_provider,
+    signInProvider,
   };
 }
 

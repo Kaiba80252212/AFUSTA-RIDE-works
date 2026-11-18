@@ -13,7 +13,7 @@ import {
   UserRole,
 } from './campus-transit';
 
-export type AuthProvider = 'email' | 'google';
+export type AuthProvider = 'email' | 'google' | 'phone';
 export type ThemePreference = 'light' | 'dark' | 'system';
 
 export interface UserRecord {

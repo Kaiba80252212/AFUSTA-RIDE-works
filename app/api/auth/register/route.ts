@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   if (csrfError) return csrfError;
 
   const ip = getClientIp(req.headers);
-  const limit = checkRateLimit(`register:${ip}`, 10, 15 * 60 * 1000);
+  const limit = checkRateLimit(`register:${ip}`, 100, 15 * 60 * 1000);
   if (!limit.allowed) {
     return NextResponse.json(
       { error: 'Too many registration attempts. Please try again later.' },

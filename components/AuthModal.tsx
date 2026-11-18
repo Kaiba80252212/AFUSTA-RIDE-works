@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { X, Loader2, Eye, EyeOff } from 'lucide-react';
+import { X, Loader2, Eye, EyeOff, Mail, Phone } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { EmailVerificationScreen } from './EmailVerificationScreen';
 import { GoogleSignInButton } from './GoogleSignInButton';
+import { PhoneAuthForm } from './PhoneAuthForm';
 import { UserRole } from '@/lib/campus-transit';
 import {
   clearPendingSignupProfile,
@@ -40,6 +41,7 @@ export function AuthModal({
   promptNotice,
 }: AuthModalProps) {
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
+  const [authMethod, setAuthMethod] = useState<'email' | 'phone'>('email');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -187,25 +189,24 @@ export function AuthModal({
 
     try {
       if (mode === 'signup') {
-        if (!name.trim() || name.trim().length < 2) {
-          throw new Error('Full name is required.');
-        }
-        if (!phone.trim() || phone.trim().length < 7) {
-          throw new Error('A valid phone number is required.');
+        if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+          throw new Error('Please enter a valid email address.');
         }
         const pwError = validateFirebasePassword(password);
         if (pwError) {
           throw new Error(pwError);
         }
 
+        const displayName = name.trim() || cleanEmail.split('@')[0] || 'AFUSTA User';
+
         // Firebase Auth Only: create account, send verification email, then sign out immediately (no auto-login, no Firestore/DB writes)
         const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-        await updateProfile(cred.user, { displayName: name.trim() }).catch(() => undefined);
+        await updateProfile(cred.user, { displayName }).catch(() => undefined);
 
         savePendingSignupProfile(cleanEmail, {
-          name: name.trim(),
+          name: displayName,
           role,
-          phone: phone.trim(),
+          phone: phone.trim() || undefined,
           matricNo: matricNo.trim() || undefined,
           department: department.trim() || undefined,
           licenseNo: licenseNo.trim() || undefined,
@@ -425,9 +426,46 @@ export function AuthModal({
             <div className="my-4 flex items-center gap-3">
               <div className="h-px flex-1 bg-slate-200 dark:bg-[#2B3848]" />
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                or continue with email
+                or continue with
               </span>
               <div className="h-px flex-1 bg-slate-200 dark:bg-[#2B3848]" />
+            </div>
+
+            <div
+              className="mb-3 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 dark:bg-[#0E1621] border border-slate-200 dark:border-[#2B3848] p-1"
+              role="group"
+              aria-label="Sign-in method"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMethod('email');
+                  setError(null);
+                }}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold transition-colors ${
+                  authMethod === 'email'
+                    ? 'bg-white dark:bg-[#17212B] text-slate-900 dark:text-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+                }`}
+              >
+                <Mail className="h-3.5 w-3.5" />
+                <span>Email</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMethod('phone');
+                  setError(null);
+                }}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold transition-colors ${
+                  authMethod === 'phone'
+                    ? 'bg-white dark:bg-[#17212B] text-slate-900 dark:text-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+                }`}
+              >
+                <Phone className="h-3.5 w-3.5" />
+                <span>Phone (SMS)</span>
+              </button>
             </div>
 
             {error && (
@@ -439,6 +477,19 @@ export function AuthModal({
               </div>
             )}
 
+            {authMethod === 'phone' ? (
+              <PhoneAuthForm
+                mode={mode}
+                role={role}
+                nextPath={onSuccessRedirect}
+                compact
+                onError={(msg) => setError(msg)}
+                onSuccess={(target) => {
+                  onClose();
+                  window.location.assign(target);
+                }}
+              />
+            ) : (
             <form onSubmit={handleSubmit} className="space-y-3.5">
           {mode === 'signup' && (
             <div>
@@ -446,12 +497,11 @@ export function AuthModal({
                 htmlFor="modal-signup-name"
                 className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1"
               >
-                Full Name
+                Full Name <span className="font-normal text-slate-400">(optional)</span>
               </label>
               <input
                 id="modal-signup-name"
                 type="text"
-                required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Fatima Abdullahi"
@@ -474,7 +524,7 @@ export function AuthModal({
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@afusta.edu.ng"
+              placeholder="you@gmail.com or name@afusta.edu.ng"
               className="w-full rounded-xl border border-slate-300 dark:border-[#2B3848] bg-white dark:bg-[#232E3C] px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:border-[#2481CC] dark:focus:border-[#4EA4F6] focus:outline-none"
             />
           </div>
@@ -486,12 +536,11 @@ export function AuthModal({
                   htmlFor="modal-signup-phone"
                   className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1"
                 >
-                  Phone Number
+                  Phone Number <span className="font-normal text-slate-400">(opt.)</span>
                 </label>
                 <input
                   id="modal-signup-phone"
                   type="tel"
-                  required
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="+234 803..."
@@ -584,7 +633,7 @@ export function AuthModal({
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={
                   mode === 'signup'
-                    ? 'Min 8 chars, upper/lowercase & number'
+                    ? 'At least 6 characters'
                     : 'Enter password'
                 }
                 className="w-full rounded-xl border border-slate-300 dark:border-[#2B3848] bg-white dark:bg-[#232E3C] pl-3.5 pr-10 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:border-[#2481CC] dark:focus:border-[#4EA4F6] focus:outline-none"
@@ -609,6 +658,7 @@ export function AuthModal({
             <span>{mode === 'login' ? 'Sign In with Email' : 'Create Account with Email'}</span>
           </button>
         </form>
+            )}
           </>
         )}
       </div>

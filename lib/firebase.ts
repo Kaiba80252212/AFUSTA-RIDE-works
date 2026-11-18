@@ -6,14 +6,20 @@ import {
   confirmPasswordReset,
   createUserWithEmailAndPassword,
   getAuth,
+  getRedirectResult,
   GoogleAuthProvider,
+  PhoneAuthProvider,
+  RecaptchaVerifier,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
+  signInWithPhoneNumber,
+  signInWithRedirect,
   signOut,
   updateProfile,
   User,
   verifyPasswordResetCode,
+  type ConfirmationResult,
 } from 'firebase/auth';
 import {
   doc,
@@ -67,7 +73,7 @@ export function mapFirebaseEmailError(err: unknown): string {
       case 'auth/invalid-email':
         return 'Please enter a valid email address.';
       case 'auth/weak-password':
-        return 'Password must be stronger (at least 8 characters with uppercase, lowercase, and a number).';
+        return 'Password must be at least 6 characters long.';
       case 'auth/user-not-found':
       case 'auth/wrong-password':
       case 'auth/invalid-credential':
@@ -75,9 +81,24 @@ export function mapFirebaseEmailError(err: unknown): string {
       case 'auth/user-disabled':
         return 'This account has been disabled. Contact the Campus Transport Office.';
       case 'auth/too-many-requests':
-        return 'Too many attempts detected. Please wait a few minutes before trying again.';
+        return 'Too many attempts detected. Please wait briefly before trying again.';
       case 'auth/operation-not-allowed':
-        return 'Email/Password sign-in must be enabled in Firebase Console (Authentication → Sign-in method → Email/Password).';
+        return 'Enable this sign-in method (Phone / Email / Google) in Firebase Console → Authentication → Sign-in method.';
+      case 'auth/unauthorized-domain':
+        return 'Add this site hostname under Firebase Console → Authentication → Settings → Authorized domains.';
+      case 'auth/invalid-phone-number':
+        return 'Enter a valid phone number with country code (e.g. +234 803 000 0000 or 0803 000 0000).';
+      case 'auth/missing-phone-number':
+        return 'Please enter your phone number.';
+      case 'auth/invalid-verification-code':
+        return 'Invalid SMS verification code. Check the 6-digit code and try again.';
+      case 'auth/code-expired':
+        return 'That SMS code expired. Request a new verification code.';
+      case 'auth/captcha-check-failed':
+      case 'auth/invalid-app-credential':
+        return 'Security verification check failed. Refresh the page and try again.';
+      case 'auth/quota-exceeded':
+        return 'SMS quota temporarily reached. Please try Google or Email sign-in, or wait shortly.';
       case 'auth/expired-action-code':
         return 'This email verification or reset link has expired. Please request a new one.';
       case 'auth/invalid-action-code':
@@ -88,21 +109,12 @@ export function mapFirebaseEmailError(err: unknown): string {
         break;
     }
   }
-  return err instanceof Error ? err.message : 'Firebase email authentication error.';
+  return err instanceof Error ? err.message : 'Firebase authentication error.';
 }
 
 export function validateFirebasePassword(password: string): string | null {
-  if (password.length < 8) {
-    return 'Password must be at least 8 characters long';
-  }
-  if (!/[A-Z]/.test(password)) {
-    return 'Password must include at least one uppercase letter';
-  }
-  if (!/[a-z]/.test(password)) {
-    return 'Password must include at least one lowercase letter';
-  }
-  if (!/[0-9]/.test(password)) {
-    return 'Password must include at least one number';
+  if (password.length < 6) {
+    return 'Password must be at least 6 characters long';
   }
   return null;
 }
@@ -111,13 +123,19 @@ export {
   applyActionCode,
   confirmPasswordReset,
   createUserWithEmailAndPassword,
+  getRedirectResult,
+  PhoneAuthProvider,
+  RecaptchaVerifier,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
+  signInWithPhoneNumber,
+  signInWithRedirect,
   signOut,
   updateProfile,
   verifyPasswordResetCode,
 };
+export type { ConfirmationResult };
 
 export enum OperationType {
   CREATE = 'create',
@@ -200,7 +218,9 @@ export async function syncFirebaseProfileToFirestore(params: {
   available?: boolean;
   walletBalance?: number;
 }): Promise<void> {
-  if (!auth.currentUser || auth.currentUser.uid !== params.uid || !auth.currentUser.emailVerified) {
+  const isVerifiedAccount =
+    Boolean(auth.currentUser?.emailVerified) || Boolean(auth.currentUser?.phoneNumber);
+  if (!auth.currentUser || auth.currentUser.uid !== params.uid || !isVerifiedAccount) {
     return;
   }
   if (!VALID_ID_REGEX.test(params.uid)) {
@@ -209,7 +229,7 @@ export async function syncFirebaseProfileToFirestore(params: {
 
   const cleanName = params.displayName.trim().slice(0, 120) || 'AFUSTA User';
   const cleanEmail = params.email.trim().toLowerCase().slice(0, 180);
-  const cleanPhone = (params.phone || '').trim().slice(0, 32);
+  const cleanPhone = (params.phone || auth.currentUser.phoneNumber || '').trim().slice(0, 32);
   const cleanMatric = (params.matricNo || '').trim().slice(0, 48);
   const cleanDept = (params.department || '').trim().slice(0, 120);
   const cleanLicense = (params.licenseNo || '').trim().slice(0, 48);
@@ -251,7 +271,7 @@ export async function syncFirebaseProfileToFirestore(params: {
     if (!existingPrivate.exists()) {
       await setDoc(privateRef, {
         uid: params.uid,
-        email: cleanEmail,
+        ...(cleanEmail ? { email: cleanEmail } : {}),
         ...(cleanPhone ? { phone: cleanPhone } : {}),
         ...(cleanMatric ? { matricNo: cleanMatric } : {}),
         ...(cleanDept ? { department: cleanDept } : {}),

@@ -24,7 +24,10 @@ service cloud.firestore {
     }
 
     function isVerifiedUser() {
-      return isSignedIn() && request.auth.token.email_verified == true;
+      return isSignedIn() && (
+        request.auth.token.email_verified == true ||
+        (request.auth.token.phone_number is string && request.auth.token.phone_number.size() >= 6)
+      );
     }
 
     function isOwner(userId) {
@@ -33,7 +36,8 @@ service cloud.firestore {
 
     // Used in allow list blocks (zero get()/exists() calls inside list queries)
     function isBootstrappedAdmin() {
-      return isVerifiedUser()
+      return isSignedIn()
+        && request.auth.token.email_verified == true
         && request.auth.token.email == 'abubakarmubarak141@gmail.com';
     }
 
@@ -80,11 +84,11 @@ service cloud.firestore {
     }
 
     function isValidUserPrivateInfo(data, userId) {
-      return data.keys().hasAll(['uid', 'email', 'walletBalance', 'updatedAt'])
+      return data.keys().hasAll(['uid', 'walletBalance', 'updatedAt'])
         && data.keys().hasOnly(['uid', 'email', 'phone', 'matricNo', 'department', 'licenseNo', 'walletBalance', 'updatedAt'])
         && isValidId(data.uid)
         && data.uid == userId
-        && data.email is string && data.email.size() >= 3 && data.email.size() <= 180
+        && (!('email' in data) || (data.email is string && data.email.size() <= 180))
         && (!('phone' in data) || (data.phone is string && data.phone.size() <= 32))
         && (!('matricNo' in data) || (data.matricNo is string && data.matricNo.size() <= 48))
         && (!('department' in data) || (data.department is string && data.department.size() <= 120))
@@ -188,7 +192,7 @@ service cloud.firestore {
             isAdmin() ||
             (
               isOwner(userId)
-              && incoming().email == existing().email
+              && ((!('email' in incoming()) && !('email' in existing())) || ('email' in incoming() && 'email' in existing() && incoming().email == existing().email))
               && incoming().walletBalance == existing().walletBalance
               && incoming().diff(existing()).affectedKeys().hasOnly(['phone', 'matricNo', 'department', 'licenseNo', 'updatedAt'])
             )
